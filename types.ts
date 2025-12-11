@@ -27,6 +27,7 @@ export interface ProcessOptions {
   mask: 'none' | 'circle' | 'square';
   rotation: number;
   crop?: CropRect;
+  offset?: { x: number; y: number };
 }
 
 export interface Preset {

@@ -19,7 +19,8 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
     fit: 'cover',
     mask: 'none',
     rotation: 0,
-    crop: undefined
+    crop: undefined,
+    offset: { x: 0, y: 0 }
   });
 
   // State
@@ -39,11 +40,15 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   
+  // Tools
+  const [dragMode, setDragMode] = useState<'view' | 'image'>('view');
+  
   // Crop Tool State
   const [isCropping, setIsCropping] = useState(false);
   const [cropSelection, setCropSelection] = useState<CropRect | null>(null);
   
   const dragStart = useRef({ x: 0, y: 0 });
+  const startOffset = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   // --- History Management ---
@@ -81,11 +86,16 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
       pushHistory(initial);
       setTransform({ x: 0, y: 0, scale: 1 });
       setCropSelection(null);
+      setDragMode('view');
     }
   };
 
   // Debounce processing
   useEffect(() => {
+    // Use a very short debounce when dragging the image content to allow near real-time updates
+    const isInteractive = isDragging && dragMode === 'image';
+    const delay = isInteractive ? 10 : 300;
+
     const timer = setTimeout(async () => {
       setIsProcessing(true);
       try {
@@ -97,10 +107,10 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
       } finally {
         setIsProcessing(false);
       }
-    }, 300);
+    }, delay);
 
     return () => clearTimeout(timer);
-  }, [image, options]);
+  }, [image, options, isDragging, dragMode]);
 
   // Cleanup object URL
   useEffect(() => {
@@ -135,7 +145,6 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
     setIsSaving(true);
     try {
       if (dirHandle) {
-         // Save to configured directory
          try {
            const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
            const writable = await fileHandle.createWritable();
@@ -143,9 +152,6 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
            await writable.close();
          } catch (e) {
            console.error("File save error, checking permissions", e);
-           // If permission missing, it might throw. Fallback to download?
-           // Usually we need to request permission on the handle again if session expired, 
-           // but keeping it simple: trigger download if fail.
            alert("Could not save to folder. Permissions might be needed or folder moved. Downloading instead.");
            triggerDownload(previewUrl, filename);
          }
@@ -169,7 +175,6 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
   const applyPreset = (preset: Preset) => {
     const newOptions = { ...options, ...preset.options };
     pushHistory(newOptions);
-    // Reset view
     setTransform({ x: 0, y: 0, scale: 1 });
   };
 
@@ -181,23 +186,20 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
     setOutName(`${base}-${w}x${h}-q${q}`);
   };
 
-  // --- Input Change Wrappers (Lazy History) ---
   const updateOption = (key: keyof ProcessOptions, value: any) => {
     const newOptions = { ...options, [key]: value };
     setOptions(newOptions);
   };
   
   const commitOptionChange = () => {
-    // Call this on blur/mouseup
     if (JSON.stringify(history[historyIndex]) !== JSON.stringify(options)) {
       pushHistory(options);
     }
   };
 
-  // --- Interaction Handlers (Pan/Zoom vs Crop) ---
+  // --- Interaction Handlers ---
 
   const handleWheel = (e: React.WheelEvent) => {
-    // FIX: Allow zooming even when cropping
     e.stopPropagation();
     const scaleAmount = -e.deltaY * 0.001;
     const newScale = Math.min(Math.max(0.1, transform.scale + scaleAmount), 5);
@@ -211,15 +213,15 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    setIsDragging(true);
+
     if (isCropping) {
-      // Start Cropping
-      setIsDragging(true);
-      // Coordinate in Viewport space relative to container
       dragStart.current = { x, y }; 
       setCropSelection({ x, y, width: 0, height: 0 }); 
+    } else if (dragMode === 'image') {
+      dragStart.current = { x: e.clientX, y: e.clientY };
+      startOffset.current = options.offset || { x: 0, y: 0 };
     } else {
-      // Pan
-      setIsDragging(true);
       dragStart.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
     }
   };
@@ -243,8 +245,25 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
          width: Math.abs(currentX - startX),
          height: Math.abs(currentY - startY)
        });
+    } else if (dragMode === 'image') {
+      // Calculate delta in viewport pixels
+      const dx = (e.clientX - dragStart.current.x);
+      const dy = (e.clientY - dragStart.current.y);
+      
+      // Convert to canvas pixels (divided by zoom scale)
+      const canvasDx = dx / transform.scale;
+      const canvasDy = dy / transform.scale;
+
+      setOptions(prev => ({
+        ...prev,
+        offset: {
+          x: startOffset.current.x + canvasDx,
+          y: startOffset.current.y + canvasDy
+        }
+      }));
+
     } else {
-      // Panning
+      // Panning Viewport
       setTransform(prev => ({
         ...prev,
         x: e.clientX - dragStart.current.x,
@@ -254,24 +273,30 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
   };
 
   const handleMouseUp = () => {
-    if (isDragging && isCropping && cropSelection && cropSelection.width > 5) {
-      const imgX = (cropSelection.x - transform.x) / transform.scale;
-      const imgY = (cropSelection.y - transform.y) / transform.scale;
-      const imgW = cropSelection.width / transform.scale;
-      const imgH = cropSelection.height / transform.scale;
+    if (isDragging) {
+      if (isCropping && cropSelection && cropSelection.width > 5) {
+        // Crop Logic
+        const imgX = (cropSelection.x - transform.x) / transform.scale;
+        const imgY = (cropSelection.y - transform.y) / transform.scale;
+        const imgW = cropSelection.width / transform.scale;
+        const imgH = cropSelection.height / transform.scale;
 
-      const finalCrop: CropRect = {
-        x: Math.max(0, Math.floor(imgX)),
-        y: Math.max(0, Math.floor(imgY)),
-        width: Math.min(image.width - imgX, Math.floor(imgW)),
-        height: Math.min(image.height - imgY, Math.floor(imgH))
-      };
+        const finalCrop: CropRect = {
+          x: Math.max(0, Math.floor(imgX)),
+          y: Math.max(0, Math.floor(imgY)),
+          width: Math.min(image.width - imgX, Math.floor(imgW)),
+          height: Math.min(image.height - imgY, Math.floor(imgH))
+        };
 
-      if (finalCrop.width > 0 && finalCrop.height > 0) {
-        const newOptions = { ...options, crop: finalCrop, width: finalCrop.width, height: finalCrop.height };
-        pushHistory(newOptions);
-        setIsCropping(false);
-        setCropSelection(null);
+        if (finalCrop.width > 0 && finalCrop.height > 0) {
+          const newOptions = { ...options, crop: finalCrop, width: finalCrop.width, height: finalCrop.height };
+          pushHistory(newOptions);
+          setIsCropping(false);
+          setCropSelection(null);
+        }
+      } else if (dragMode === 'image') {
+         // Commit the move to history
+         commitOptionChange();
       }
     }
     
@@ -290,26 +315,14 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
           </button>
           <h2 className="font-semibold text-slate-200">Editor</h2>
           
-          {/* Undo/Redo/Reset Toolbar */}
           <div className="ml-auto flex gap-1">
-             <button 
-                onClick={handleUndo} 
-                disabled={historyIndex === 0}
-                className="p-2 text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 rounded" title="Undo (Ctrl+Z)"
-             >
+             <button onClick={handleUndo} disabled={historyIndex === 0} className="p-2 text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 rounded" title="Undo">
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
              </button>
-             <button 
-                onClick={handleRedo} 
-                disabled={historyIndex === history.length - 1}
-                className="p-2 text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 rounded" title="Redo (Ctrl+Shift+Z)"
-             >
+             <button onClick={handleRedo} disabled={historyIndex === history.length - 1} className="p-2 text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 rounded" title="Redo">
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" transform="scale(-1, 1)"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
              </button>
-             <button 
-                onClick={handleReset} 
-                className="p-2 text-red-400 hover:text-red-300 hover:bg-slate-800 rounded" title="Reset Image"
-             >
+             <button onClick={handleReset} className="p-2 text-red-400 hover:text-red-300 hover:bg-slate-800 rounded" title="Reset Image">
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
              </button>
           </div>
@@ -317,36 +330,21 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
 
         <div className="p-4 space-y-6">
           
-          {/* Output Name */}
           <div className="space-y-2">
              <label className="text-xs font-semibold text-slate-500 uppercase flex justify-between">
                Filename
-               <button 
-                onClick={handleSmartRename}
-                className="text-blue-400 hover:text-blue-300 text-[10px] uppercase font-bold tracking-wider"
-               >
-                 Smart Rename
-               </button>
+               <button onClick={handleSmartRename} className="text-blue-400 hover:text-blue-300 text-[10px] uppercase font-bold tracking-wider">Smart Rename</button>
              </label>
              <div className="flex gap-2">
-               <input 
-                type="text" 
-                value={outName}
-                onChange={(e) => setOutName(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-               />
+               <input type="text" value={outName} onChange={(e) => setOutName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none" />
              </div>
           </div>
           
-          {/* Crop Button */}
           <div>
             <button 
               onClick={() => {
                 if(isCropping) { setIsCropping(false); setCropSelection(null); }
-                else { 
-                  setIsCropping(true); 
-                  // FIX: Do not reset view to allow zooming in before cropping 
-                }
+                else { setIsCropping(true); setDragMode('view'); }
               }}
               className={`w-full py-2 flex items-center justify-center gap-2 rounded-lg border transition-colors ${
                 isCropping 
@@ -357,57 +355,31 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
               {isCropping ? 'Cancel Crop' : 'Crop Selection'}
             </button>
-            {isCropping && <p className="text-[10px] text-blue-400 mt-1 text-center">Draw rectangle to crop. Scroll to zoom.</p>}
+            {isCropping && <p className="text-[10px] text-blue-400 mt-1 text-center">Draw rectangle to crop.</p>}
           </div>
 
-          {/* Dimensions */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-500 uppercase">Dimensions</label>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <span className="text-xs text-slate-500 mb-1 block">Width</span>
-                <input 
-                  type="number" 
-                  value={options.width || ''}
-                  onChange={(e) => updateOption('width', Number(e.target.value) || undefined)}
-                  onBlur={commitOptionChange}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-                  placeholder="Auto"
-                />
+                <input type="number" value={options.width || ''} onChange={(e) => updateOption('width', Number(e.target.value) || undefined)} onBlur={commitOptionChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none" placeholder="Auto" />
               </div>
               <div>
                 <span className="text-xs text-slate-500 mb-1 block">Height</span>
-                <input 
-                  type="number" 
-                  value={options.height || ''}
-                  onChange={(e) => updateOption('height', Number(e.target.value) || undefined)}
-                  onBlur={commitOptionChange}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-                  placeholder="Auto"
-                />
+                <input type="number" value={options.height || ''} onChange={(e) => updateOption('height', Number(e.target.value) || undefined)} onBlur={commitOptionChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none" placeholder="Auto" />
               </div>
             </div>
             <div className="flex gap-2 text-xs">
               {['cover', 'contain', 'fill'].map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => { updateOption('fit', mode); commitOptionChange(); }}
-                  className={`flex-1 py-1 rounded border transition-colors ${options.fit === mode ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
-                >
-                  {mode}
-                </button>
+                <button key={mode} onClick={() => { updateOption('fit', mode); commitOptionChange(); }} className={`flex-1 py-1 rounded border transition-colors ${options.fit === mode ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}>{mode}</button>
               ))}
             </div>
           </div>
 
-          {/* Format & Quality */}
           <div className="space-y-2">
              <label className="text-xs font-semibold text-slate-500 uppercase">Format</label>
-             <select 
-              value={options.format}
-              onChange={(e) => { updateOption('format', e.target.value); commitOptionChange(); }}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-             >
+             <select value={options.format} onChange={(e) => { updateOption('format', e.target.value); commitOptionChange(); }} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
                {Object.entries(SUPPORTED_FORMATS).map(([mime, label]) => (
                  <option key={mime} value={mime}>{label}</option>
                ))}
@@ -419,49 +391,25 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
               <label className="text-xs font-semibold text-slate-500 uppercase">Quality</label>
               <span className="text-xs text-slate-400">{Math.round(options.quality * 100)}%</span>
             </div>
-            <input 
-              type="range" 
-              min="0.1" 
-              max="1" 
-              step="0.05"
-              value={options.quality}
-              onChange={(e) => updateOption('quality', parseFloat(e.target.value))}
-              onMouseUp={commitOptionChange}
-              className="w-full accent-blue-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
-            />
+            <input type="range" min="0.1" max="1" step="0.05" value={options.quality} onChange={(e) => updateOption('quality', parseFloat(e.target.value))} onMouseUp={commitOptionChange} className="w-full accent-blue-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
           </div>
 
-          {/* Mask */}
           <div className="space-y-2">
              <label className="text-xs font-semibold text-slate-500 uppercase">Shape Mask</label>
              <div className="flex gap-2">
                {['none', 'circle', 'square'].map(m => (
-                 <button 
-                  key={m}
-                  onClick={() => { updateOption('mask', m); commitOptionChange(); }}
-                  className={`px-3 py-1 text-xs rounded border capitalize transition-colors ${options.mask === m ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}
-                 >
-                   {m}
-                 </button>
+                 <button key={m} onClick={() => { updateOption('mask', m); commitOptionChange(); }} className={`px-3 py-1 text-xs rounded border capitalize transition-colors ${options.mask === m ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}>{m}</button>
                ))}
              </div>
           </div>
           
           <hr className="border-slate-800" />
           
-           {/* Presets */}
            <div className="space-y-2">
              <label className="text-xs font-semibold text-slate-500 uppercase">Dev Presets</label>
              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
                 {PRESETS.map(preset => (
-                  <button
-                    key={preset.id}
-                    onClick={() => applyPreset(preset)}
-                    className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded transition-colors text-slate-300 whitespace-nowrap"
-                    title={preset.category}
-                  >
-                    {preset.label}
-                  </button>
+                  <button key={preset.id} onClick={() => applyPreset(preset)} className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded transition-colors text-slate-300 whitespace-nowrap" title={preset.category}>{preset.label}</button>
                 ))}
              </div>
           </div>
@@ -473,7 +421,27 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
       <div className="flex-1 flex flex-col bg-slate-900 relative overflow-hidden">
         
         {/* View Controls Overlay */}
-        <div className="absolute top-4 right-4 z-20 flex gap-2 bg-slate-950/80 backdrop-blur rounded-lg p-1 border border-slate-700 shadow-lg">
+        <div className="absolute top-4 right-4 z-20 flex gap-2 bg-slate-950/80 backdrop-blur rounded-lg p-1 border border-slate-700 shadow-lg items-center">
+           {/* Tool Toggle */}
+           <div className="flex bg-slate-800 rounded mr-2 p-0.5">
+             <button 
+               onClick={() => { setDragMode('view'); setIsCropping(false); }} 
+               className={`p-1.5 rounded ${dragMode === 'view' && !isCropping ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+               title="Pan View (Hand)"
+             >
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+             </button>
+             <button 
+               onClick={() => { setDragMode('image'); setIsCropping(false); }} 
+               className={`p-1.5 rounded ${dragMode === 'image' && !isCropping ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+               title="Move Image (V)"
+             >
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M19 9l3 3-3 3"/><path d="M15 19l-3 3-3-3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>
+             </button>
+           </div>
+           
+           <div className="h-6 w-px bg-slate-700 mx-1"></div>
+
            <button onClick={() => setTransform(t => ({...t, scale: t.scale + 0.1}))} className="p-2 hover:bg-white/10 rounded text-white" title="Zoom In">
              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
            </button>
@@ -487,7 +455,9 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
 
         <div 
           ref={containerRef}
-          className={`flex-1 flex items-center justify-center p-0 overflow-hidden relative cursor-${isCropping ? 'crosshair' : (isDragging ? 'grabbing' : 'grab')}`}
+          className={`flex-1 flex items-center justify-center p-0 overflow-hidden relative ${
+            isCropping ? 'cursor-crosshair' : (dragMode === 'image' ? (isDragging ? 'cursor-grabbing' : 'cursor-move') : (isDragging ? 'cursor-grabbing' : 'cursor-grab'))
+          }`}
           onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -504,7 +474,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
              }}
           />
 
-          {/* Container for the image (and potential original for cropping) */}
+          {/* Container for the image */}
           <div 
             style={{
               transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
@@ -525,12 +495,11 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                   alt="Preview" 
                   draggable={false}
                   className="max-w-none shadow-2xl border border-slate-800 select-none"
-                  style={{ borderRadius: options.mask === 'circle' ? '50%' : '0' }}
                 />
              )}
           </div>
           
-          {/* Crop Overlay (in view coordinates) */}
+          {/* Crop Overlay */}
           {isCropping && cropSelection && (
              <div 
                className="absolute z-30 border-2 border-blue-400 bg-blue-500/10 pointer-events-none"
@@ -548,7 +517,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
              </div>
           )}
 
-          {isProcessing && !isCropping && (
+          {isProcessing && !isDragging && (
             <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center pointer-events-none">
               <div className="flex flex-col items-center gap-2">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StoredImage, ProcessOptions, OutputFormat } from '../types';
+import { StoredImage, ProcessOptions } from '../types';
 import { processImage } from '../services/processor';
 import { SUPPORTED_FORMATS } from '../constants';
 

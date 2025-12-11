@@ -46,12 +46,13 @@ export const processImage = async (
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  // Draw Logic
-  // We use the 9-argument drawImage to handle source cropping + destination resizing
-  // drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+  // User Offset
+  const userOffsetX = options.offset?.x || 0;
+  const userOffsetY = options.offset?.y || 0;
 
+  // Draw Logic
   if (options.fit === 'fill') {
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, targetWidth, targetHeight);
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, userOffsetX, userOffsetY, targetWidth, targetHeight);
   } else if (options.fit === 'cover') {
     // Calculate aspect ratios
     const srcAspect = srcW / srcH;
@@ -72,7 +73,7 @@ export const processImage = async (
       offsetY = (targetHeight - renderH) / 2;
     }
     
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, offsetX, offsetY, renderW, renderH);
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, offsetX + userOffsetX, offsetY + userOffsetY, renderW, renderH);
 
   } else if (options.fit === 'contain') {
     const scale = Math.min(targetWidth / srcW, targetHeight / srcH);
@@ -81,7 +82,7 @@ export const processImage = async (
     const x = (targetWidth - renderW) / 2;
     const y = (targetHeight - renderH) / 2;
 
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, x, y, renderW, renderH);
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, x + userOffsetX, y + userOffsetY, renderW, renderH);
   }
 
   // Masking
@@ -89,6 +90,17 @@ export const processImage = async (
     ctx.globalCompositeOperation = 'destination-in';
     ctx.beginPath();
     ctx.arc(targetWidth / 2, targetHeight / 2, Math.min(targetWidth, targetHeight) / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  } else if (options.mask === 'square') {
+    // If width != height, square mask limits to the smallest dimension centered
+    const size = Math.min(targetWidth, targetHeight);
+    const x = (targetWidth - size) / 2;
+    const y = (targetHeight - size) / 2;
+    
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.beginPath();
+    ctx.rect(x, y, size, size);
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
   }
