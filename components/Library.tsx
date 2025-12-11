@@ -53,8 +53,8 @@ export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect,
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-indigo-500/20 pointer-events-none border-4 border-indigo-500 border-dashed m-4 rounded-xl">
-          <p className="text-2xl font-bold text-indigo-200">Drop images here</p>
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/20 pointer-events-none border-4 border-blue-500 border-dashed m-4 rounded-xl">
+          <p className="text-2xl font-bold text-blue-200">Drop images here</p>
         </div>
       )}
 
@@ -65,7 +65,7 @@ export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect,
             <>
               <button 
                 onClick={() => onBatchEdit(Array.from(selectedIds))}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Edit Selected ({selectedIds.size})
@@ -101,7 +101,7 @@ export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect,
               key={img.id}
               onClick={(e) => handleCardClick(e, img)}
               className={`group relative aspect-square rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${
-                selectedIds.has(img.id) ? 'border-indigo-500 shadow-lg shadow-indigo-500/20 scale-95' : 'border-slate-800 hover:border-slate-600 hover:scale-[1.02]'
+                selectedIds.has(img.id) ? 'border-blue-500 shadow-lg shadow-blue-500/20 scale-95' : 'border-slate-800 hover:border-slate-600 hover:scale-[1.02]'
               }`}
             >
               <img 
@@ -120,7 +120,7 @@ export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect,
               
               {/* Selection Checkbox Overlay */}
               <div 
-                className={`absolute top-2 right-2 w-6 h-6 rounded-full border border-white/50 flex items-center justify-center transition-colors ${selectedIds.has(img.id) ? 'bg-indigo-500 border-indigo-500' : 'bg-black/40 hover:bg-black/60'}`}
+                className={`absolute top-2 right-2 w-6 h-6 rounded-full border border-white/50 flex items-center justify-center transition-colors ${selectedIds.has(img.id) ? 'bg-blue-500 border-blue-500' : 'bg-black/40 hover:bg-black/60'}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelect(img.id, true);

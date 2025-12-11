@@ -323,7 +323,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                Filename
                <button 
                 onClick={handleSmartRename}
-                className="text-indigo-400 hover:text-indigo-300 text-[10px] uppercase font-bold tracking-wider"
+                className="text-blue-400 hover:text-blue-300 text-[10px] uppercase font-bold tracking-wider"
                >
                  Smart Rename
                </button>
@@ -333,7 +333,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                 type="text" 
                 value={outName}
                 onChange={(e) => setOutName(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                />
              </div>
           </div>
@@ -350,14 +350,14 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
               }}
               className={`w-full py-2 flex items-center justify-center gap-2 rounded-lg border transition-colors ${
                 isCropping 
-                ? 'bg-indigo-600 border-indigo-600 text-white' 
+                ? 'bg-blue-600 border-blue-600 text-white' 
                 : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
               }`}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
               {isCropping ? 'Cancel Crop' : 'Crop Selection'}
             </button>
-            {isCropping && <p className="text-[10px] text-indigo-400 mt-1 text-center">Draw rectangle to crop. Scroll to zoom.</p>}
+            {isCropping && <p className="text-[10px] text-blue-400 mt-1 text-center">Draw rectangle to crop. Scroll to zoom.</p>}
           </div>
 
           {/* Dimensions */}
@@ -371,7 +371,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                   value={options.width || ''}
                   onChange={(e) => updateOption('width', Number(e.target.value) || undefined)}
                   onBlur={commitOptionChange}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                   placeholder="Auto"
                 />
               </div>
@@ -382,7 +382,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                   value={options.height || ''}
                   onChange={(e) => updateOption('height', Number(e.target.value) || undefined)}
                   onBlur={commitOptionChange}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                   placeholder="Auto"
                 />
               </div>
@@ -392,7 +392,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                 <button
                   key={mode}
                   onClick={() => { updateOption('fit', mode); commitOptionChange(); }}
-                  className={`flex-1 py-1 rounded border transition-colors ${options.fit === mode ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
+                  className={`flex-1 py-1 rounded border transition-colors ${options.fit === mode ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
                 >
                   {mode}
                 </button>
@@ -406,7 +406,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
              <select 
               value={options.format}
               onChange={(e) => { updateOption('format', e.target.value); commitOptionChange(); }}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
              >
                {Object.entries(SUPPORTED_FORMATS).map(([mime, label]) => (
                  <option key={mime} value={mime}>{label}</option>
@@ -427,7 +427,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
               value={options.quality}
               onChange={(e) => updateOption('quality', parseFloat(e.target.value))}
               onMouseUp={commitOptionChange}
-              className="w-full accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+              className="w-full accent-blue-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
             />
           </div>
 
@@ -439,7 +439,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                  <button 
                   key={m}
                   onClick={() => { updateOption('mask', m); commitOptionChange(); }}
-                  className={`px-3 py-1 text-xs rounded border capitalize transition-colors ${options.mask === m ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+                  className={`px-3 py-1 text-xs rounded border capitalize transition-colors ${options.mask === m ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}
                  >
                    {m}
                  </button>
@@ -517,7 +517,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                   src={URL.createObjectURL(image.blob)}
                   alt="Original for Cropping"
                   draggable={false}
-                  className="max-w-none shadow-2xl border border-indigo-500/50 select-none opacity-80"
+                  className="max-w-none shadow-2xl border border-blue-500/50 select-none opacity-80"
                 />
              ) : (
                 <img 
@@ -533,7 +533,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
           {/* Crop Overlay (in view coordinates) */}
           {isCropping && cropSelection && (
              <div 
-               className="absolute z-30 border-2 border-indigo-400 bg-indigo-500/10 pointer-events-none"
+               className="absolute z-30 border-2 border-blue-400 bg-blue-500/10 pointer-events-none"
                style={{
                  left: cropSelection.x,
                  top: cropSelection.y,
@@ -541,10 +541,10 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
                  height: cropSelection.height
                }}
              >
-                <div className="absolute -top-2 -left-2 w-2 h-2 bg-indigo-500"></div>
-                <div className="absolute -top-2 -right-2 w-2 h-2 bg-indigo-500"></div>
-                <div className="absolute -bottom-2 -left-2 w-2 h-2 bg-indigo-500"></div>
-                <div className="absolute -bottom-2 -right-2 w-2 h-2 bg-indigo-500"></div>
+                <div className="absolute -top-2 -left-2 w-2 h-2 bg-blue-500"></div>
+                <div className="absolute -top-2 -right-2 w-2 h-2 bg-blue-500"></div>
+                <div className="absolute -bottom-2 -left-2 w-2 h-2 bg-blue-500"></div>
+                <div className="absolute -bottom-2 -right-2 w-2 h-2 bg-blue-500"></div>
              </div>
           )}
 
@@ -568,7 +568,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
             <div className="h-8 w-px bg-slate-800"></div>
             <div>
               <span className="text-slate-500 block text-xs">Output</span>
-              <span className="text-indigo-400 font-medium">
+              <span className="text-blue-400 font-medium">
                 {previewBlob ? formatBytes(previewBlob.size) : '...'} &bull; {options.width || 'Auto'}x{options.height || 'Auto'}
               </span>
             </div>
@@ -582,7 +582,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
           <button 
             onClick={handleDownload}
             disabled={!previewBlob || isCropping || isSaving}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
+            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2"
           >
             {isSaving ? (
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/50 border-t-white"></div>

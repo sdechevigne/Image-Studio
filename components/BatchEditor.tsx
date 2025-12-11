@@ -33,14 +33,8 @@ export const BatchEditor: React.FC<BatchEditorProps> = ({ images, onClose, dirHa
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
       try {
-        // Calculate dynamic dimensions if only one is set or both undefined
-        // Actually, the processor handles undefined options, but for batch, 
-        // if user leaves Width/Height empty, we want original size processing.
-        // We pass the global options. If W/H are undefined, processor uses source dimensions.
-        
         const { blob } = await processImage(img.blob, options);
         
-        // Construct filename
         let ext = 'jpg';
         if (options.format === 'image/png') ext = 'png';
         if (options.format === 'image/webp') ext = 'webp';
@@ -55,14 +49,12 @@ export const BatchEditor: React.FC<BatchEditorProps> = ({ images, onClose, dirHa
            await writable.write(blob);
            await writable.close();
         } else {
-           // Fallback download
            const link = document.createElement('a');
            link.href = URL.createObjectURL(blob);
            link.download = filename;
            document.body.appendChild(link);
            link.click();
            document.body.removeChild(link);
-           // Small delay to prevent browser throttling downloads
            await new Promise(r => setTimeout(r, 200));
         }
 
@@ -104,7 +96,7 @@ export const BatchEditor: React.FC<BatchEditorProps> = ({ images, onClose, dirHa
                   type="number" 
                   value={options.width || ''}
                   onChange={(e) => updateOption('width', Number(e.target.value) || undefined)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                   placeholder="Original"
                 />
               </div>
@@ -114,7 +106,7 @@ export const BatchEditor: React.FC<BatchEditorProps> = ({ images, onClose, dirHa
                   type="number" 
                   value={options.height || ''}
                   onChange={(e) => updateOption('height', Number(e.target.value) || undefined)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                   placeholder="Original"
                 />
               </div>
@@ -124,7 +116,7 @@ export const BatchEditor: React.FC<BatchEditorProps> = ({ images, onClose, dirHa
                 <button
                   key={mode}
                   onClick={() => updateOption('fit', mode)}
-                  className={`flex-1 py-1 rounded border transition-colors ${options.fit === mode ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
+                  className={`flex-1 py-1 rounded border transition-colors ${options.fit === mode ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
                 >
                   {mode}
                 </button>
@@ -138,7 +130,7 @@ export const BatchEditor: React.FC<BatchEditorProps> = ({ images, onClose, dirHa
              <select 
               value={options.format}
               onChange={(e) => updateOption('format', e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
              >
                {Object.entries(SUPPORTED_FORMATS).map(([mime, label]) => (
                  <option key={mime} value={mime}>{label}</option>
@@ -158,7 +150,7 @@ export const BatchEditor: React.FC<BatchEditorProps> = ({ images, onClose, dirHa
               step="0.05"
               value={options.quality}
               onChange={(e) => updateOption('quality', parseFloat(e.target.value))}
-              className="w-full accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+              className="w-full accent-blue-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
             />
           </div>
 
@@ -168,7 +160,7 @@ export const BatchEditor: React.FC<BatchEditorProps> = ({ images, onClose, dirHa
            <button 
              onClick={handleProcessAll}
              disabled={isProcessing}
-             className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white py-3 rounded-lg font-medium shadow-lg shadow-indigo-500/20"
+             className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-3 rounded-lg font-medium shadow-lg shadow-blue-500/20"
            >
              {isProcessing ? `Processing ${progress.current}/${progress.total}` : 'Process All Images'}
            </button>

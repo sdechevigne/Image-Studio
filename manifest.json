@@ -1,6 +1,6 @@
 {
-  "name": "DevImage Studio",
-  "short_name": "DevImage",
+  "name": "Image Studio",
+  "short_name": "ImageStudio",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

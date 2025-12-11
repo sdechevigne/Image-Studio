@@ -116,7 +116,7 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-950 text-slate-400">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           <p>Loading Workspace...</p>
         </div>
       </div>
@@ -127,10 +127,18 @@ const App: React.FC = () => {
     <div className="h-screen w-screen flex flex-col bg-slate-950 text-slate-200">
       
       {/* Header */}
-      <header className="h-14 border-b border-slate-800 flex items-center px-6 bg-slate-950 shrink-0">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setActiveImageId(null); setBatchImageIds(null); }}>
-           <div className="w-6 h-6 bg-indigo-500 rounded-md flex items-center justify-center text-xs font-bold text-white shadow-lg shadow-indigo-500/50">DS</div>
-           <h1 className="font-bold tracking-tight">DevImage Studio</h1>
+      <header className="h-14 border-b border-slate-800 flex items-center px-6 bg-slate-950 shrink-0 shadow-sm">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setActiveImageId(null); setBatchImageIds(null); }}>
+           <div className="text-blue-500">
+             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+               <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7" />
+               <line x1="16" x2="22" y1="5" y2="5" />
+               <line x1="19" x2="19" y1="2" y2="8" />
+               <circle cx="9" cy="9" r="2" />
+               <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+             </svg>
+           </div>
+           <h1 className="font-bold tracking-tight text-xl text-white">Image Studio</h1>
         </div>
         
         <div className="ml-auto flex items-center gap-4">

@@ -1,5 +1,5 @@
 {
-  "name": "DevImage Studio",
+  "name": "Image Studio",
   "description": "A persistent PWA for developers to resize, convert, and manage image assets with bulk processing and preset workflows.",
   "requestFramePermissions": []
 }
