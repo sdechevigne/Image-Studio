@@ -3,8 +3,19 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    exclude: [
+      '@jsquash/avif',
+      '@jsquash/jpeg',
+      '@jsquash/png',
+      '@jsquash/webp'
+    ]
+  },
   build: {
     outDir: 'dist',
     target: 'esnext'
+  },
+  worker: {
+    format: 'es'
   }
 });
