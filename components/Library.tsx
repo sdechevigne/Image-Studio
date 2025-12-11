@@ -16,6 +16,7 @@ export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect,
   const [isDragging, setIsDragging] = useState(false);
 
   const handleCardClick = (e: React.MouseEvent, img: StoredImage) => {
+    e.stopPropagation(); // Stop bubbling to upload trigger
     if (e.metaKey || e.ctrlKey) {
       onSelect(img.id, true);
     } else {
@@ -51,14 +52,17 @@ export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect,
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onClick={() => document.getElementById('file-upload-global')?.click()}
     >
+      <input id="file-upload-global" type="file" multiple accept="image/*" className="hidden" onChange={handleInputChange} />
+      
       {isDragging && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/20 pointer-events-none border-4 border-blue-500 border-dashed m-4 rounded-xl">
           <p className="text-2xl font-bold text-blue-200">Drop images here</p>
         </div>
       )}
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-2xl font-bold text-white">Library ({images.length})</h2>
         <div className="flex gap-3">
           {selectedIds.size > 0 && (
@@ -78,24 +82,26 @@ export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect,
               </button>
             </>
           )}
-          <label className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer transition-colors flex items-center gap-2 shadow-lg">
+          <label 
+             htmlFor="file-upload-global"
+             className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer transition-colors flex items-center gap-2 shadow-lg"
+             onClick={(e) => e.stopPropagation()}
+          >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <span>Add Images</span>
-            <input type="file" multiple accept="image/*" className="hidden" onChange={handleInputChange} />
           </label>
         </div>
       </div>
 
       {images.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-96 border-2 border-dashed border-slate-700 rounded-xl text-slate-500 select-none">
+        <div className="flex flex-col items-center justify-center h-96 border-2 border-dashed border-slate-700 rounded-xl text-slate-500 select-none cursor-pointer hover:bg-slate-800/50 transition-colors">
           <svg className="w-16 h-16 mb-4 text-slate-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <p className="text-lg mb-2 font-medium text-slate-400">Drag & Drop images here</p>
-          <p className="text-sm">or click the Add Images button above</p>
+          <p className="text-lg mb-2 font-medium text-slate-400">Drag & Drop images here or click to upload</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-20">
           {images.map((img) => (
             <div 
               key={img.id}
