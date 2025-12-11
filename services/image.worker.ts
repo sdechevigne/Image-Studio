@@ -1,4 +1,3 @@
-import { ProcessOptions } from '../types';
 import { removeBackground } from '@imgly/background-removal';
 import * as jpeg from '@jsquash/jpeg';
 import * as png from '@jsquash/png';
@@ -15,7 +14,7 @@ self.onmessage = async (e: MessageEvent) => {
   try {
     if (type === 'remove-bg') {
       const resultBlob = await removeBackground(blob, {
-        progress: (key, current, total) => {
+        progress: () => {
            // Optional progress handling
         }
       });

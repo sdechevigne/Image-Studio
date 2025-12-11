@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StoredImage, ProcessOptions, OutputFormat, Preset, CropRect } from '../types';
+import { StoredImage, ProcessOptions, OutputFormat, CropRect } from '../types';
 import { processImage, formatBytes, removeBackgroundAI } from '../services/processor';
 import { SUPPORTED_FORMATS, PRESETS } from '../constants';
 import { CompareSlider } from './CompareSlider';
@@ -140,7 +140,8 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
   };
 
   const handleShare = async () => {
-    if (!previewBlob || !navigator.share) return;
+    // Check if navigator.share exists and is a function before using it
+    if (!previewBlob || typeof navigator.share !== 'function') return;
     const file = new File([previewBlob], finalName, { type: options.format });
     try {
       await navigator.share({
@@ -426,7 +427,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => 
             </div>
 
             <div className="flex gap-3">
-                {navigator.share && (
+                {typeof navigator.share === 'function' && (
                     <button onClick={handleShare} className="px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-lg flex items-center gap-2">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
                         Share

@@ -5,7 +5,7 @@ import Worker from './image.worker?worker';
 const worker = new Worker();
 const pendingPromises = new Map<string, { resolve: Function; reject: Function }>();
 
-worker.onmessage = (e) => {
+worker.onmessage = (e: MessageEvent) => {
   const { id, success, blob, width, height, error } = e.data;
   const pending = pendingPromises.get(id);
   
