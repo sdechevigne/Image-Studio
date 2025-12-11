@@ -143,8 +143,11 @@ export const processImage = async (
       break;
     }
     case 'image/avif': {
-      // Use standard quality parameter (0-100) instead of manual cqLevel calculation
-      const buffer = await avif.encode(imageData, { quality: options.quality * 100 });
+      // AVIF uses cqLevel (0-63), where 0 is best, 63 is worst.
+      // We map quality (0-1) to cqLevel.
+      const cqLevel = Math.round(63 * (1 - options.quality));
+      // Cast to any to avoid type error where cqLevel is missing in defined EncodeOptions
+      const buffer = await avif.encode(imageData, { cqLevel } as any);
       resultBlob = new Blob([buffer], { type: 'image/avif' });
       break;
     }
