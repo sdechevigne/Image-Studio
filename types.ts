@@ -11,6 +11,13 @@ export interface StoredImage {
 
 export type OutputFormat = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/avif';
 
+export interface CropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ProcessOptions {
   width?: number;
   height?: number;
@@ -19,6 +26,7 @@ export interface ProcessOptions {
   fit: 'cover' | 'contain' | 'fill';
   mask: 'none' | 'circle' | 'square';
   rotation: number;
+  crop?: CropRect;
 }
 
 export interface Preset {

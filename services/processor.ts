@@ -22,14 +22,21 @@ export const processImage = async (
 
   if (!ctx) throw new Error('Could not get canvas context');
 
-  let targetWidth = options.width || img.width;
-  let targetHeight = options.height || img.height;
+  // Determine Source Dimensions (Crop or Full Image)
+  const srcX = options.crop ? options.crop.x : 0;
+  const srcY = options.crop ? options.crop.y : 0;
+  const srcW = options.crop ? options.crop.width : img.width;
+  const srcH = options.crop ? options.crop.height : img.height;
+
+  // Determine Target Dimensions
+  let targetWidth = options.width || srcW;
+  let targetHeight = options.height || srcH;
 
   // Aspect ratio calculations if one dimension is missing
   if (options.width && !options.height) {
-    targetHeight = Math.round((img.height / img.width) * options.width);
+    targetHeight = Math.round((srcH / srcW) * options.width);
   } else if (!options.width && options.height) {
-    targetWidth = Math.round((img.width / img.height) * options.height);
+    targetWidth = Math.round((srcW / srcH) * options.height);
   }
 
   canvas.width = targetWidth;
@@ -39,25 +46,42 @@ export const processImage = async (
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  // Rotation
-  if (options.rotation) {
-    // Handling rotation logic implies canvas resizing, skipping complex rotation for basic resize focus
-    // Simple 90deg increments would require swapping w/h
-  }
-
   // Draw Logic
+  // We use the 9-argument drawImage to handle source cropping + destination resizing
+  // drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+
   if (options.fit === 'fill') {
-    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, targetWidth, targetHeight);
   } else if (options.fit === 'cover') {
-    const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
-    const x = (targetWidth / 2) - (img.width / 2) * scale;
-    const y = (targetHeight / 2) - (img.height / 2) * scale;
-    ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+    // Calculate aspect ratios
+    const srcAspect = srcW / srcH;
+    const dstAspect = targetWidth / targetHeight;
+    
+    let renderW = targetWidth;
+    let renderH = targetHeight;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (srcAspect > dstAspect) {
+      // Source is wider than dest, so we crop width (zoom in)
+      renderW = targetHeight * srcAspect;
+      offsetX = (targetWidth - renderW) / 2;
+    } else {
+      // Source is taller than dest, so we crop height
+      renderH = targetWidth / srcAspect;
+      offsetY = (targetHeight - renderH) / 2;
+    }
+    
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, offsetX, offsetY, renderW, renderH);
+
   } else if (options.fit === 'contain') {
-    const scale = Math.min(targetWidth / img.width, targetHeight / img.height);
-    const x = (targetWidth / 2) - (img.width / 2) * scale;
-    const y = (targetHeight / 2) - (img.height / 2) * scale;
-    ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+    const scale = Math.min(targetWidth / srcW, targetHeight / srcH);
+    const renderW = srcW * scale;
+    const renderH = srcH * scale;
+    const x = (targetWidth - renderW) / 2;
+    const y = (targetHeight - renderH) / 2;
+
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, x, y, renderW, renderH);
   }
 
   // Masking
@@ -67,9 +91,6 @@ export const processImage = async (
     ctx.arc(targetWidth / 2, targetHeight / 2, Math.min(targetWidth, targetHeight) / 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
-  } else if (options.mask === 'square') {
-     // Already square if resized, but strictly implies cropping to shortest side?
-     // Assuming fit=cover handled dimensions, mask square just ensures no overflow if we had transparency
   }
 
   // Export

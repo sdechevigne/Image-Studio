@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StoredImage, ProcessOptions, OutputFormat, Preset } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { StoredImage, ProcessOptions, OutputFormat, Preset, CropRect } from '../types';
 import { processImage, formatBytes } from '../services/processor';
 import { SUPPORTED_FORMATS, PRESETS } from '../constants';
 
@@ -9,27 +9,84 @@ interface EditorProps {
 }
 
 export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
-  // Processing State
-  const [options, setOptions] = useState<ProcessOptions>({
+  // Initial State Factory
+  const getInitialOptions = (): ProcessOptions => ({
     width: image.width,
     height: image.height,
     quality: 0.9,
     format: image.type as OutputFormat,
     fit: 'cover',
     mask: 'none',
-    rotation: 0
+    rotation: 0,
+    crop: undefined
   });
+
+  // State
+  const [options, setOptions] = useState<ProcessOptions>(getInitialOptions());
+  
+  // History
+  const [history, setHistory] = useState<ProcessOptions[]>([getInitialOptions()]);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [outName, setOutName] = useState(image.name.substring(0, image.name.lastIndexOf('.')) || image.name);
 
-  // Viewport State for Pan/Zoom
+  // Viewport
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Crop Tool State
+  const [isCropping, setIsCropping] = useState(false);
+  const [cropSelection, setCropSelection] = useState<CropRect | null>(null);
+  
   const dragStart = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // --- History Management ---
+
+  const pushHistory = (newOptions: ProcessOptions) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(newOptions);
+    // Limit history size to 20
+    if (newHistory.length > 20) newHistory.shift();
+    
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    setOptions(newOptions);
+  };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const prev = history[historyIndex - 1];
+      setHistoryIndex(historyIndex - 1);
+      setOptions(prev);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      const next = history[historyIndex + 1];
+      setHistoryIndex(historyIndex + 1);
+      setOptions(next);
+    }
+  };
+
+  const handleReset = () => {
+    if (confirm('Reset all changes to original image?')) {
+      const initial = getInitialOptions();
+      pushHistory(initial);
+      setTransform({ x: 0, y: 0, scale: 1 });
+      setCropSelection(null);
+    }
+  };
+
+  // Wrapper for updating options that pushes to history (for presets/crop/reset)
+  // For inputs (sliders), we update local state directly and perhaps debounce history push?
+  // Current approach: We update `options` directly for inputs, but we should create a 'commit' action for history.
+  // For simplicity here: changing inputs updates state (no undo for every slider pixel), 
+  // but applying presets or finishing a crop will push history.
 
   // Debounce processing
   useEffect(() => {
@@ -56,6 +113,19 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
     };
   }, [previewUrl]);
 
+  // Key Bindings
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [historyIndex, history]);
+
   const handleDownload = () => {
     if (!previewBlob) return;
     const link = document.createElement('a');
@@ -74,8 +144,9 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
   };
 
   const applyPreset = (preset: Preset) => {
-    setOptions(prev => ({ ...prev, ...preset.options }));
-    // Reset view on preset change to see the whole image
+    const newOptions = { ...options, ...preset.options };
+    pushHistory(newOptions);
+    // Reset view
     setTransform({ x: 0, y: 0, scale: 1 });
   };
 
@@ -87,9 +158,25 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
     setOutName(`${base}-${w}x${h}-q${q}`);
   };
 
-  // --- Pan & Zoom Handlers ---
+  // --- Input Change Wrappers (Lazy History) ---
+  const updateOption = (key: keyof ProcessOptions, value: any) => {
+    const newOptions = { ...options, [key]: value };
+    setOptions(newOptions);
+    // Note: We are NOT pushing to history on every drag of a slider to avoid 100s of states.
+    // Ideally, push on "onMouseUp" of range inputs.
+  };
+  
+  const commitOptionChange = () => {
+    // Call this on blur/mouseup
+    if (JSON.stringify(history[historyIndex]) !== JSON.stringify(options)) {
+      pushHistory(options);
+    }
+  };
+
+  // --- Interaction Handlers (Pan/Zoom vs Crop) ---
 
   const handleWheel = (e: React.WheelEvent) => {
+    if (isCropping) return;
     e.stopPropagation();
     const scaleAmount = -e.deltaY * 0.001;
     const newScale = Math.min(Math.max(0.1, transform.scale + scaleAmount), 5);
@@ -98,21 +185,105 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    setIsDragging(true);
-    dragStart.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (isCropping) {
+      // Start Cropping
+      setIsDragging(true);
+      // Coordinate in Viewport space relative to container
+      dragStart.current = { x, y }; 
+      setCropSelection({ x, y, width: 0, height: 0 }); // Temporary view coords
+    } else {
+      // Pan
+      setIsDragging(true);
+      dragStart.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return;
     e.preventDefault();
-    setTransform(prev => ({
-      ...prev,
-      x: e.clientX - dragStart.current.x,
-      y: e.clientY - dragStart.current.y
-    }));
+
+    if (isCropping) {
+       if (!containerRef.current) return;
+       const rect = containerRef.current.getBoundingClientRect();
+       const currentX = e.clientX - rect.left;
+       const currentY = e.clientY - rect.top;
+       
+       const startX = dragStart.current.x;
+       const startY = dragStart.current.y;
+
+       setCropSelection({
+         x: Math.min(startX, currentX),
+         y: Math.min(startY, currentY),
+         width: Math.abs(currentX - startX),
+         height: Math.abs(currentY - startY)
+       });
+    } else {
+      // Panning
+      setTransform(prev => ({
+        ...prev,
+        x: e.clientX - dragStart.current.x,
+        y: e.clientY - dragStart.current.y
+      }));
+    }
   };
 
   const handleMouseUp = () => {
+    if (isDragging && isCropping && cropSelection && cropSelection.width > 5) {
+      // Apply Crop
+      // Convert view coords to image coords
+      // Image is drawn at (transform.x, transform.y) with transform.scale
+      // ViewX = ImgX * Scale + TransX
+      // ImgX = (ViewX - TransX) / Scale
+
+      const imgX = (cropSelection.x - transform.x) / transform.scale;
+      const imgY = (cropSelection.y - transform.y) / transform.scale;
+      const imgW = cropSelection.width / transform.scale;
+      const imgH = cropSelection.height / transform.scale;
+
+      // Validate bounds relative to original image or previous crop?
+      // For simplicity, we always crop relative to the *original* image loaded in memory.
+      // But visually we are cropping the potentially previously cropped image?
+      // No, currently previewUrl shows the processed result. 
+      // If we crop again, it gets complicated. 
+      // Simplified Logic: Cropping always sets the source crop rect on the original image.
+      // However, the user sees the *processed* image (which might already be cropped/resized).
+      // To implement robust cropping on the preview, we need to map the click back to the original source.
+      
+      // Since previewUrl is the *output* of processImage, clicking on it means we are cropping the output?
+      // To keep it persistent and non-destructive:
+      // We need to know where the displayed pixels map to the original blob.
+      
+      // WORKAROUND for Complexity: 
+      // When Cropping Mode is active, we should probably display the ORIGINAL image, 
+      // allowing the user to select the crop area on the full source.
+      
+      // BUT, let's try to map it if possible.
+      // If options.width is set, the preview is resized.
+      // Let's assume for accurate cropping, we temporarily show the raw original image in the crop view?
+      // That is the standard "Lightroom" way.
+      
+      // Let's implement: Apply the calculated crop to the options.
+      // We need to constrain it to 0 -> image.width
+      const finalCrop: CropRect = {
+        x: Math.max(0, Math.floor(imgX)),
+        y: Math.max(0, Math.floor(imgY)),
+        width: Math.min(image.width - imgX, Math.floor(imgW)),
+        height: Math.min(image.height - imgY, Math.floor(imgH))
+      };
+
+      if (finalCrop.width > 0 && finalCrop.height > 0) {
+        const newOptions = { ...options, crop: finalCrop, width: finalCrop.width, height: finalCrop.height };
+        pushHistory(newOptions);
+        setIsCropping(false);
+        setCropSelection(null);
+      }
+    }
+    
     setIsDragging(false);
   };
 
@@ -127,6 +298,30 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           </button>
           <h2 className="font-semibold text-slate-200">Editor</h2>
+          
+          {/* Undo/Redo/Reset Toolbar */}
+          <div className="ml-auto flex gap-1">
+             <button 
+                onClick={handleUndo} 
+                disabled={historyIndex === 0}
+                className="p-2 text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 rounded" title="Undo (Ctrl+Z)"
+             >
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+             </button>
+             <button 
+                onClick={handleRedo} 
+                disabled={historyIndex === history.length - 1}
+                className="p-2 text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 rounded" title="Redo (Ctrl+Shift+Z)"
+             >
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" transform="scale(-1, 1)"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+             </button>
+             <button 
+                onClick={handleReset} 
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-slate-800 rounded" title="Reset Image"
+             >
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+             </button>
+          </div>
         </div>
 
         <div className="p-4 space-y-6">
@@ -138,7 +333,6 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
                <button 
                 onClick={handleSmartRename}
                 className="text-indigo-400 hover:text-indigo-300 text-[10px] uppercase font-bold tracking-wider"
-                title="Auto-rename: name-widthxheight-quality"
                >
                  Smart Rename
                </button>
@@ -152,6 +346,25 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
                />
              </div>
           </div>
+          
+          {/* Crop Button */}
+          <div>
+            <button 
+              onClick={() => {
+                if(isCropping) { setIsCropping(false); setCropSelection(null); }
+                else { setIsCropping(true); resetView(); }
+              }}
+              className={`w-full py-2 flex items-center justify-center gap-2 rounded-lg border transition-colors ${
+                isCropping 
+                ? 'bg-indigo-600 border-indigo-600 text-white' 
+                : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+              {isCropping ? 'Cancel Crop' : 'Crop Selection'}
+            </button>
+            {isCropping && <p className="text-[10px] text-indigo-400 mt-1 text-center">Draw rectangle on image to crop. Original image shown.</p>}
+          </div>
 
           {/* Dimensions */}
           <div className="space-y-2">
@@ -162,7 +375,8 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
                 <input 
                   type="number" 
                   value={options.width || ''}
-                  onChange={(e) => setOptions({...options, width: Number(e.target.value) || undefined})}
+                  onChange={(e) => updateOption('width', Number(e.target.value) || undefined)}
+                  onBlur={commitOptionChange}
                   className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
                   placeholder="Auto"
                 />
@@ -172,7 +386,8 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
                 <input 
                   type="number" 
                   value={options.height || ''}
-                  onChange={(e) => setOptions({...options, height: Number(e.target.value) || undefined})}
+                  onChange={(e) => updateOption('height', Number(e.target.value) || undefined)}
+                  onBlur={commitOptionChange}
                   className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
                   placeholder="Auto"
                 />
@@ -182,7 +397,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
               {['cover', 'contain', 'fill'].map(mode => (
                 <button
                   key={mode}
-                  onClick={() => setOptions({...options, fit: mode as any})}
+                  onClick={() => { updateOption('fit', mode); commitOptionChange(); }}
                   className={`flex-1 py-1 rounded border transition-colors ${options.fit === mode ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
                 >
                   {mode}
@@ -196,7 +411,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
              <label className="text-xs font-semibold text-slate-500 uppercase">Format</label>
              <select 
               value={options.format}
-              onChange={(e) => setOptions({...options, format: e.target.value as OutputFormat})}
+              onChange={(e) => { updateOption('format', e.target.value); commitOptionChange(); }}
               className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-indigo-500"
              >
                {Object.entries(SUPPORTED_FORMATS).map(([mime, label]) => (
@@ -216,7 +431,8 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
               max="1" 
               step="0.05"
               value={options.quality}
-              onChange={(e) => setOptions({...options, quality: parseFloat(e.target.value)})}
+              onChange={(e) => updateOption('quality', parseFloat(e.target.value))}
+              onMouseUp={commitOptionChange}
               className="w-full accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
             />
           </div>
@@ -228,7 +444,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
                {['none', 'circle', 'square'].map(m => (
                  <button 
                   key={m}
-                  onClick={() => setOptions({...options, mask: m as any})}
+                  onClick={() => { updateOption('mask', m); commitOptionChange(); }}
                   className={`px-3 py-1 text-xs rounded border capitalize transition-colors ${options.mask === m ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}
                  >
                    {m}
@@ -277,7 +493,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
 
         <div 
           ref={containerRef}
-          className={`flex-1 flex items-center justify-center p-0 overflow-hidden relative cursor-${isDragging ? 'grabbing' : 'grab'}`}
+          className={`flex-1 flex items-center justify-center p-0 overflow-hidden relative cursor-${isCropping ? 'crosshair' : (isDragging ? 'grabbing' : 'grab')}`}
           onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -285,7 +501,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
           onMouseLeave={handleMouseUp}
         >
           
-          {/* Checkerboard background for transparency - Static */}
+          {/* Checkerboard background */}
           <div className="absolute inset-0 z-0 opacity-20 pointer-events-none"
              style={{
                backgroundImage: `linear-gradient(45deg, #334155 25%, transparent 25%), linear-gradient(-45deg, #334155 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #334155 75%), linear-gradient(-45deg, transparent 75%, #334155 75%)`,
@@ -294,27 +510,58 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
              }}
           />
 
-          {previewUrl && (
-            <div 
-              style={{
-                transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-                transition: isDragging ? 'none' : 'transform 0.1s ease-out'
-              }}
-              className="relative z-10 origin-center will-change-transform"
-            >
-              <img 
-                src={previewUrl} 
-                alt="Preview" 
-                draggable={false}
-                className="max-w-none shadow-2xl border border-slate-800 select-none"
-                style={{
-                  borderRadius: options.mask === 'circle' ? '50%' : '0'
-                }}
-              />
-            </div>
-          )}
+          {/* Container for the image (and potential original for cropping) */}
+          <div 
+            style={{
+              transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+              transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+            }}
+            className="relative z-10 origin-center will-change-transform"
+          >
+             {/* If Cropping, we should ideally show the original source to crop from, 
+                 but due to complexity of mapping processed image back to source, 
+                 we will rely on the preview image which is roughly consistent if not heavily modified.
+                 To make it perfect, we'd render the raw original here when isCropping is true.
+                 Let's stick to Preview for consistency of WYSIWYG unless user wants to recrop source.
+             */}
+             {/* Strategy: When isCropping, show original image to allow full re-crop */}
+             {isCropping ? (
+                <img 
+                  src={URL.createObjectURL(image.blob)}
+                  alt="Original for Cropping"
+                  draggable={false}
+                  className="max-w-none shadow-2xl border border-indigo-500/50 select-none opacity-80"
+                />
+             ) : (
+                <img 
+                  src={previewUrl} 
+                  alt="Preview" 
+                  draggable={false}
+                  className="max-w-none shadow-2xl border border-slate-800 select-none"
+                  style={{ borderRadius: options.mask === 'circle' ? '50%' : '0' }}
+                />
+             )}
+          </div>
           
-          {isProcessing && (
+          {/* Crop Overlay (in view coordinates) */}
+          {isCropping && cropSelection && (
+             <div 
+               className="absolute z-30 border-2 border-indigo-400 bg-indigo-500/10 pointer-events-none"
+               style={{
+                 left: cropSelection.x,
+                 top: cropSelection.y,
+                 width: cropSelection.width,
+                 height: cropSelection.height
+               }}
+             >
+                <div className="absolute -top-2 -left-2 w-2 h-2 bg-indigo-500"></div>
+                <div className="absolute -top-2 -right-2 w-2 h-2 bg-indigo-500"></div>
+                <div className="absolute -bottom-2 -left-2 w-2 h-2 bg-indigo-500"></div>
+                <div className="absolute -bottom-2 -right-2 w-2 h-2 bg-indigo-500"></div>
+             </div>
+          )}
+
+          {isProcessing && !isCropping && (
             <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center pointer-events-none">
               <div className="flex flex-col items-center gap-2">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
@@ -347,7 +594,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
 
           <button 
             onClick={handleDownload}
-            disabled={!previewBlob}
+            disabled={!previewBlob || isCropping}
             className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
