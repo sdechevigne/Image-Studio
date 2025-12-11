@@ -9,9 +9,10 @@ interface LibraryProps {
   onDelete: (ids: string[]) => void;
   onOpen: (image: StoredImage) => void;
   onUpload: (files: FileList | null) => void;
+  onBatchEdit: (ids: string[]) => void;
 }
 
-export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect, onDelete, onOpen, onUpload }) => {
+export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect, onDelete, onOpen, onUpload, onBatchEdit }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleCardClick = (e: React.MouseEvent, img: StoredImage) => {
@@ -61,14 +62,23 @@ export const Library: React.FC<LibraryProps> = ({ images, selectedIds, onSelect,
         <h2 className="text-2xl font-bold text-white">Library ({images.length})</h2>
         <div className="flex gap-3">
           {selectedIds.size > 0 && (
-            <button 
-              onClick={() => onDelete(Array.from(selectedIds))}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-            >
-              Delete ({selectedIds.size})
-            </button>
+            <>
+              <button 
+                onClick={() => onBatchEdit(Array.from(selectedIds))}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit Selected ({selectedIds.size})
+              </button>
+              <button 
+                onClick={() => onDelete(Array.from(selectedIds))}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Delete ({selectedIds.size})
+              </button>
+            </>
           )}
-          <label className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg cursor-pointer transition-colors flex items-center gap-2 shadow-lg shadow-indigo-900/50">
+          <label className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer transition-colors flex items-center gap-2 shadow-lg">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <span>Add Images</span>
             <input type="file" multiple accept="image/*" className="hidden" onChange={handleInputChange} />

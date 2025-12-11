@@ -6,9 +6,10 @@ import { SUPPORTED_FORMATS, PRESETS } from '../constants';
 interface EditorProps {
   image: StoredImage;
   onClose: () => void;
+  dirHandle: FileSystemDirectoryHandle | null;
 }
 
-export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
+export const Editor: React.FC<EditorProps> = ({ image, onClose, dirHandle }) => {
   // Initial State Factory
   const getInitialOptions = (): ProcessOptions => ({
     width: image.width,
@@ -32,6 +33,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [outName, setOutName] = useState(image.name.substring(0, image.name.lastIndexOf('.')) || image.name);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Viewport
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -82,12 +84,6 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
     }
   };
 
-  // Wrapper for updating options that pushes to history (for presets/crop/reset)
-  // For inputs (sliders), we update local state directly and perhaps debounce history push?
-  // Current approach: We update `options` directly for inputs, but we should create a 'commit' action for history.
-  // For simplicity here: changing inputs updates state (no undo for every slider pixel), 
-  // but applying presets or finishing a crop will push history.
-
   // Debounce processing
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -126,18 +122,45 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyIndex, history]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!previewBlob) return;
-    const link = document.createElement('a');
-    link.href = previewUrl;
     
     // Determine extension
     let ext = 'jpg';
     if (options.format === 'image/png') ext = 'png';
     if (options.format === 'image/webp') ext = 'webp';
     if (options.format === 'image/avif') ext = 'avif';
-    
-    link.download = `${outName}.${ext}`;
+    const filename = `${outName}.${ext}`;
+
+    setIsSaving(true);
+    try {
+      if (dirHandle) {
+         // Save to configured directory
+         try {
+           const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+           const writable = await fileHandle.createWritable();
+           await writable.write(previewBlob);
+           await writable.close();
+         } catch (e) {
+           console.error("File save error, checking permissions", e);
+           // If permission missing, it might throw. Fallback to download?
+           // Usually we need to request permission on the handle again if session expired, 
+           // but keeping it simple: trigger download if fail.
+           alert("Could not save to folder. Permissions might be needed or folder moved. Downloading instead.");
+           triggerDownload(previewUrl, filename);
+         }
+      } else {
+        triggerDownload(previewUrl, filename);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const triggerDownload = (url: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -162,8 +185,6 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
   const updateOption = (key: keyof ProcessOptions, value: any) => {
     const newOptions = { ...options, [key]: value };
     setOptions(newOptions);
-    // Note: We are NOT pushing to history on every drag of a slider to avoid 100s of states.
-    // Ideally, push on "onMouseUp" of range inputs.
   };
   
   const commitOptionChange = () => {
@@ -176,7 +197,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
   // --- Interaction Handlers (Pan/Zoom vs Crop) ---
 
   const handleWheel = (e: React.WheelEvent) => {
-    if (isCropping) return;
+    // FIX: Allow zooming even when cropping
     e.stopPropagation();
     const scaleAmount = -e.deltaY * 0.001;
     const newScale = Math.min(Math.max(0.1, transform.scale + scaleAmount), 5);
@@ -195,7 +216,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
       setIsDragging(true);
       // Coordinate in Viewport space relative to container
       dragStart.current = { x, y }; 
-      setCropSelection({ x, y, width: 0, height: 0 }); // Temporary view coords
+      setCropSelection({ x, y, width: 0, height: 0 }); 
     } else {
       // Pan
       setIsDragging(true);
@@ -234,41 +255,11 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
 
   const handleMouseUp = () => {
     if (isDragging && isCropping && cropSelection && cropSelection.width > 5) {
-      // Apply Crop
-      // Convert view coords to image coords
-      // Image is drawn at (transform.x, transform.y) with transform.scale
-      // ViewX = ImgX * Scale + TransX
-      // ImgX = (ViewX - TransX) / Scale
-
       const imgX = (cropSelection.x - transform.x) / transform.scale;
       const imgY = (cropSelection.y - transform.y) / transform.scale;
       const imgW = cropSelection.width / transform.scale;
       const imgH = cropSelection.height / transform.scale;
 
-      // Validate bounds relative to original image or previous crop?
-      // For simplicity, we always crop relative to the *original* image loaded in memory.
-      // But visually we are cropping the potentially previously cropped image?
-      // No, currently previewUrl shows the processed result. 
-      // If we crop again, it gets complicated. 
-      // Simplified Logic: Cropping always sets the source crop rect on the original image.
-      // However, the user sees the *processed* image (which might already be cropped/resized).
-      // To implement robust cropping on the preview, we need to map the click back to the original source.
-      
-      // Since previewUrl is the *output* of processImage, clicking on it means we are cropping the output?
-      // To keep it persistent and non-destructive:
-      // We need to know where the displayed pixels map to the original blob.
-      
-      // WORKAROUND for Complexity: 
-      // When Cropping Mode is active, we should probably display the ORIGINAL image, 
-      // allowing the user to select the crop area on the full source.
-      
-      // BUT, let's try to map it if possible.
-      // If options.width is set, the preview is resized.
-      // Let's assume for accurate cropping, we temporarily show the raw original image in the crop view?
-      // That is the standard "Lightroom" way.
-      
-      // Let's implement: Apply the calculated crop to the options.
-      // We need to constrain it to 0 -> image.width
       const finalCrop: CropRect = {
         x: Math.max(0, Math.floor(imgX)),
         y: Math.max(0, Math.floor(imgY)),
@@ -352,7 +343,10 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
             <button 
               onClick={() => {
                 if(isCropping) { setIsCropping(false); setCropSelection(null); }
-                else { setIsCropping(true); resetView(); }
+                else { 
+                  setIsCropping(true); 
+                  // FIX: Do not reset view to allow zooming in before cropping 
+                }
               }}
               className={`w-full py-2 flex items-center justify-center gap-2 rounded-lg border transition-colors ${
                 isCropping 
@@ -363,7 +357,7 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
               {isCropping ? 'Cancel Crop' : 'Crop Selection'}
             </button>
-            {isCropping && <p className="text-[10px] text-indigo-400 mt-1 text-center">Draw rectangle on image to crop. Original image shown.</p>}
+            {isCropping && <p className="text-[10px] text-indigo-400 mt-1 text-center">Draw rectangle to crop. Scroll to zoom.</p>}
           </div>
 
           {/* Dimensions */}
@@ -518,13 +512,6 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
             }}
             className="relative z-10 origin-center will-change-transform"
           >
-             {/* If Cropping, we should ideally show the original source to crop from, 
-                 but due to complexity of mapping processed image back to source, 
-                 we will rely on the preview image which is roughly consistent if not heavily modified.
-                 To make it perfect, we'd render the raw original here when isCropping is true.
-                 Let's stick to Preview for consistency of WYSIWYG unless user wants to recrop source.
-             */}
-             {/* Strategy: When isCropping, show original image to allow full re-crop */}
              {isCropping ? (
                 <img 
                   src={URL.createObjectURL(image.blob)}
@@ -594,11 +581,15 @@ export const Editor: React.FC<EditorProps> = ({ image, onClose }) => {
 
           <button 
             onClick={handleDownload}
-            disabled={!previewBlob || isCropping}
+            disabled={!previewBlob || isCropping || isSaving}
             className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download
+            {isSaving ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/50 border-t-white"></div>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            )}
+            {isSaving ? 'Saving...' : (dirHandle ? 'Save to Folder' : 'Download')}
           </button>
         </div>
       </div>
