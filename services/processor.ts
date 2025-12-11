@@ -137,7 +137,8 @@ export const processImage = async (
       break;
     }
     case 'image/webp': {
-      const buffer = await webp.encode(imageData, { quality: options.quality });
+      // WebP expects quality 0-100
+      const buffer = await webp.encode(imageData, { quality: options.quality * 100 });
       resultBlob = new Blob([buffer], { type: 'image/webp' });
       break;
     }
