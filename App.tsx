@@ -16,6 +16,9 @@ const App: React.FC = () => {
   // File System Handle
   const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
 
+  // Check support for File System Access API
+  const supportsFileSystem = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+
   // Load images & settings on mount
   useEffect(() => {
     loadLibrary();
@@ -97,6 +100,10 @@ const App: React.FC = () => {
   };
   
   const handleSetOutputFolder = async () => {
+    if (!supportsFileSystem) {
+       alert("The File System Access API is not supported in this browser. Please use Chrome, Edge, or Opera on desktop.");
+       return;
+    }
     try {
       // @ts-ignore - File System Access API types might be missing in older envs
       const handle = await window.showDirectoryPicker();
@@ -105,7 +112,8 @@ const App: React.FC = () => {
         await DB.saveDirectoryHandle(handle);
       }
     } catch (e) {
-      console.error("Error selecting folder", e);
+      // User likely cancelled the picker
+      console.log("Folder selection cancelled or failed", e);
     }
   };
 
@@ -142,15 +150,17 @@ const App: React.FC = () => {
         </div>
         
         <div className="ml-auto flex items-center gap-4">
-           {/* Directory Picker */}
-           <button 
-             onClick={handleSetOutputFolder}
-             className={`text-xs flex items-center gap-2 px-3 py-1.5 rounded border transition-colors ${dirHandle ? 'border-green-800 bg-green-900/20 text-green-400 hover:bg-green-900/30' : 'border-slate-700 hover:bg-slate-800 text-slate-400'}`}
-             title={dirHandle ? `Saved to: ${dirHandle.name}` : "Set persistent download folder"}
-           >
-             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-             {dirHandle ? dirHandle.name : 'Set Output Folder'}
-           </button>
+           {/* Directory Picker - Only show if supported */}
+           {supportsFileSystem && (
+             <button 
+               onClick={handleSetOutputFolder}
+               className={`text-xs flex items-center gap-2 px-3 py-1.5 rounded border transition-colors ${dirHandle ? 'border-green-800 bg-green-900/20 text-green-400 hover:bg-green-900/30' : 'border-slate-700 hover:bg-slate-800 text-slate-400'}`}
+               title={dirHandle ? `Saved to: ${dirHandle.name}` : "Set persistent download folder"}
+             >
+               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+               {dirHandle ? dirHandle.name : 'Set Output Folder'}
+             </button>
+           )}
         </div>
       </header>
 
