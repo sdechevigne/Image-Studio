@@ -131,6 +131,7 @@ export const processImage = async (
       break;
     }
     case 'image/png': {
+      // PNG is lossless in this context, options not required/supported for quality
       const buffer = await png.encode(imageData);
       resultBlob = new Blob([buffer], { type: 'image/png' });
       break;
@@ -146,7 +147,7 @@ export const processImage = async (
       break;
     }
     default:
-       // Fallback for types not handled by jsquash (should not happen given types)
+       // Fallback for types not handled by jsquash
        if (canvas instanceof HTMLCanvasElement) {
           resultBlob = await new Promise<Blob>((resolve, reject) => {
              canvas.toBlob((b) => {
