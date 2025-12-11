@@ -1,4 +1,4 @@
-import { ProcessOptions, OutputFormat } from '../types';
+import { ProcessOptions } from '../types';
 
 const createImage = (url: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {

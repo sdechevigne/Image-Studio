@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StoredImage, ProcessOptions, OutputFormat, Preset, CropRect } from '../types';
 import { processImage, formatBytes } from '../services/processor';
 import { SUPPORTED_FORMATS, PRESETS } from '../constants';
