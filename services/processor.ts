@@ -18,7 +18,7 @@ export const removeBackgroundAI = async (blob: Blob): Promise<Blob> => {
   // Executes on main thread, blocking UI only during heavy sync ops, 
   // but mostly async (WASM).
   return await removeBackground(blob, {
-    progress: (key, current, total) => {
+    progress: () => {
        // Optional: could dispatch progress event
     }
   });
